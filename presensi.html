@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Formulir Presensi - SPV Attendance</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="css/style.css">
+    <!-- Supabase -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- Library HTML5 QR Code Scanner -->
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+</head>
+<body class="bg-slate-100 min-h-screen">
+
+    <nav class="bg-indigo-700 text-white shadow-md">
+        <div class="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+            <div class="font-bold text-lg tracking-wide">SPV ATTENDANCE - PRESENSI</div>
+            <a href="dashboard_anggota.html" class="bg-indigo-800 hover:bg-indigo-900 px-3 py-1.5 rounded-lg text-sm transition">
+                Kembali ke Dashboard
+            </a>
+        </div>
+    </nav>
+
+    <main class="max-w-xl mx-auto px-4 py-8">
+        <div class="bg-white rounded-2xl shadow-md p-6 border border-slate-200">
+            <h1 class="text-xl font-bold text-slate-800 mb-1">Formulir Kehadiran & Izin Latihan</h1>
+            <p class="text-sm text-slate-500 mb-4">Arahkan kamera ke layar pelatih untuk absen hadir, atau ajukan izin.</p>
+
+            <!-- Peringatan Sistem Waktu -->
+            <div id="infoWaktu" class="mb-5 p-3 rounded-lg text-xs font-medium bg-indigo-50 border border-indigo-200 text-indigo-800 hidden">
+                Menunggu aksi...
+            </div>
+
+            <form id="formPresensi" class="space-y-5">
+                <!-- Pilihan Status -->
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Status Kehadiran</label>
+                    <select id="statusKehadiran" onchange="gantiStatus()" class="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-indigo-50 font-bold text-indigo-900">
+                        <option value="Hadir">📷 Hadir (Scan Barcode Pelatih)</option>
+                        <option value="Izin">✉️ Izin (Wajib diajukan sebelum jadwal dimulai)</option>
+                        <option value="Sakit">🏥 Sakit (Wajib diajukan sebelum jadwal dimulai)</option>
+                    </select>
+                </div>
+
+                <!-- ------------------------------------------------ -->
+                <!-- BAGIAN KHUSUS HADIR (SCANNER KAMERA)            -->
+                <!-- ------------------------------------------------ -->
+                <div id="sectionHadir" class="space-y-4">
+                    <div class="p-4 bg-slate-800 rounded-xl border border-slate-700 text-center overflow-hidden">
+                        <label class="block text-sm font-bold text-white mb-2">Arahkan Kamera ke Barcode</label>
+                        <!-- Kotak tempat kamera menyala -->
+                        <div id="reader" class="mx-auto w-full max-w-sm rounded-lg overflow-hidden border-2 border-dashed border-slate-500 bg-black min-h-[250px]"></div>
+                        
+                        <p id="teksStatusScan" class="text-xs text-emerald-400 mt-3 font-semibold animate-pulse">Menyalakan kamera...</p>
+                    </div>
+
+                    <!-- Pratinjau TTD Tersimpan -->
+                    <div class="p-3 bg-slate-50 rounded-xl border border-slate-200 text-center flex items-center justify-center gap-3">
+                        <div id="boxTtd" class="text-center">
+                            <span class="text-xs text-slate-400">Memuat tanda tangan...</span>
+                        </div>
+                        <div class="text-left">
+                            <p class="text-[10px] text-slate-500">Tanda tangan digital Anda akan tersemat otomatis setelah scan berhasil.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ------------------------------------------------ -->
+                <!-- BAGIAN KHUSUS IZIN / SAKIT (FORM MANUAL)        -->
+                <!-- ------------------------------------------------ -->
+                <div id="sectionIzin" class="space-y-4 hidden">
+                    
+                    <!-- Pilihan Jadwal (HANYA MUNCUL SAAT IZIN/SAKIT) -->
+                    <div id="wadahPilihJadwal">
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Pilih Jadwal Latihan Resmi</label>
+                        <select id="selectJadwal" onchange="validasiWaktuIzin()" class="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                            <option value="">Memuat jadwal latihan...</option>
+                        </select>
+                    </div>
+
+                    <div class="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+                        ℹ️ Pengajuan izin/sakit wajib dikirimkan <strong>sebelum jam latihan dimulai</strong>.
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Alasan / Keterangan</label>
+                        <textarea id="keteranganIzin" rows="3" placeholder="Tuliskan alasan izin atau sakit..."
+                            class="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"></textarea>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Unggah Foto Surat / Bukti (Opsional/Pendukung)</label>
+                        <input type="file" id="inputSurat" accept="image/*" 
+                            class="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer">
+                    </div>
+
+                    <button type="button" onclick="kirimPresensiManual()" id="btnKirimIzin"
+                        class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded-lg transition duration-200 shadow-lg disabled:opacity-50">
+                        Kirim Pengajuan Izin
+                    </button>
+                </div>
+                
+            </form>
+        </div>
+    </main>
+
+    <script src="js/supabase-config.js"></script>
+    <script>
+        const nis = localStorage.getItem('user_nis');
+        const nama = localStorage.getItem('user_nama');
+        const suara = localStorage.getItem('user_suara');
+
+        if (!nis) {
+            alert('Silakan login terlebih dahulu!');
+            window.location.href = 'index.html';
+        }
+
+        let dataProfilSiswa = null;
+        let html5QrCode = null; // Instance Scanner langsung
+        let isProcessingScan = false;
+
+        // 1. Muat Profil Siswa
+        async function muatProfil() {
+            const { data } = await _supabase
+                .from('anggota')
+                .select('*')
+                .eq('nis', nis)
+                .single();
+
+            if (data) {
+                dataProfilSiswa = data;
+                const boxTtd = document.getElementById('boxTtd');
+
+                if (data.status_ttd === 'Disetujui' && data.foto_ttd) {
+                    boxTtd.innerHTML = `<img src="${data.foto_ttd}" class="h-10 mx-auto border bg-white p-1 rounded shadow-sm">`;
+                } else {
+                    boxTtd.innerHTML = `<p class="text-[10px] text-red-600 font-medium">⚠️ TTD Belum Disetujui</p>`;
+                }
+            }
+        }
+        muatProfil();
+
+        // 2. Muat Daftar Jadwal Latihan
+        async function muatJadwalLatihan() {
+            const selectJadwal = document.getElementById('selectJadwal');
+            try {
+                const { data, error } = await _supabase
+                    .from('jadwal_latihan')
+                    .select('*')
+                    .order('tanggal_latihan', { ascending: false });
+
+                if (error) throw error;
+
+                if (!data || data.length === 0) {
+                    selectJadwal.innerHTML = `<option value="">Belum ada jadwal latihan</option>`;
+                    return;
+                }
+
+                selectJadwal.innerHTML = `<option value="">-- Pilih Jadwal Latihan --</option>`;
+                data.forEach(jadwal => {
+                    selectJadwal.innerHTML += `<option value="${jadwal.tanggal_latihan}" data-jam="${jadwal.jam_mulai}">${jadwal.tanggal_latihan} - ${jadwal.keterangan_latihan} (Pukul ${jadwal.jam_mulai})</option>`;
+                });
+            } catch (err) {
+                selectJadwal.innerHTML = `<option value="">Gagal memuat jadwal</option>`;
+            }
+        }
+        muatJadwalLatihan();
+
+
+        // --- FUNGSI AUTO-START SCANNER KAMERA ---
+        async function inisialisasiScanner() {
+            const teksStatus = document.getElementById('teksStatusScan');
+            
+            // Hentikan scanner lama jika masih aktif
+            if (html5QrCode) {
+                try {
+                    await html5QrCode.stop();
+                    html5QrCode.clear();
+                } catch (e) {
+                    console.log(e);
+                }
+            }
+
+            html5QrCode = new Html5Qrcode("reader");
+            const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+
+            try {
+                // Langsung nyalakan kamera belakang otomatis tanpa tombol klik
+                await html5QrCode.start(
+                    { facingMode: "environment" }, 
+                    config, 
+                    onScanSuccess, 
+                    onScanFailure
+                );
+                teksStatus.textContent = 'Arahkan kamera ke barcode pelatih...';
+                teksStatus.className = 'text-xs text-emerald-400 mt-3 font-semibold animate-pulse';
+            } catch (err) {
+                console.error("Gagal menyalakan kamera:", err);
+                teksStatus.textContent = 'Gagal mengakses kamera. Periksa izin browser.';
+                teksStatus.className = 'text-xs text-red-400 mt-3 font-semibold';
+            }
+        }
+
+        async function onScanSuccess(decodedText, decodedResult) {
+            if (isProcessingScan) return;
+            isProcessingScan = true;
+
+            const teksStatus = document.getElementById('teksStatusScan');
+            const infoWaktu = document.getElementById('infoWaktu');
+
+            teksStatus.textContent = 'Memproses Barcode... Mohon tunggu.';
+            teksStatus.className = 'text-xs text-amber-400 mt-3 font-semibold';
+            
+            try {
+                const dataJadwal = JSON.parse(decodedText);
+                const tglQR = dataJadwal.tgl;
+                const jamQR = dataJadwal.jam;
+
+                // Matikan kamera setelah sukses scan
+                if (html5QrCode) {
+                    await html5QrCode.stop();
+                    html5QrCode.clear();
+                }
+
+                // 1. Validasi TTD
+                if (!dataProfilSiswa || dataProfilSiswa.status_ttd !== 'Disetujui') {
+                    alert('GAGAL: Tanda tangan digital Anda belum disetujui pelatih! Anda tidak bisa absen Hadir.');
+                    window.location.reload();
+                    return;
+                }
+
+                // 2. Validasi Waktu (-15 mnt s.d +15 mnt)
+                const waktuMulaiObj = new Date(`${tglQR}T${jamQR}`);
+                const sekarang = new Date();
+                const waktuBukaHadir = new Date(waktuMulaiObj.getTime() - (15 * 60 * 1000));
+                const waktuTutupHadir = new Date(waktuMulaiObj.getTime() + (15 * 60 * 1000));
+
+                if (sekarang < waktuBukaHadir) {
+                    alert('Presensi belum dibuka! Absen baru bisa dilakukan 15 menit sebelum jam ' + jamQR);
+                    window.location.reload();
+                    return;
+                }
+                if (sekarang > waktuTutupHadir) {
+                    alert('Waktu presensi Hadir sudah DITUTUP (lewat 15 menit dari jadwal mulai). Silakan melapor manual ke Pelatih.');
+                    window.location.reload();
+                    return;
+                }
+
+                // 3. Kirim ke Database
+                infoWaktu.classList.remove('hidden');
+                infoWaktu.className = 'mb-5 p-3 rounded-lg text-xs font-medium bg-emerald-50 border border-emerald-200 text-emerald-800';
+                infoWaktu.innerHTML = `✅ Barcode Cocok! Mengirim presensi kehadiran Anda secara otomatis...`;
+
+                const { error } = await _supabase
+                    .from('presensi')
+                    .insert([{
+                        nis: nis,
+                        nama_lengkap: nama,
+                        jenis_suara: suara,
+                        tanggal_latihan: tglQR,
+                        status: 'Hadir',
+                        keterangan: 'Hadir via Scan Barcode',
+                        foto_surat_izin: ''
+                    }]);
+
+                if (error) {
+                    if (error.code === '23505') throw new Error('Anda sudah pernah absen untuk jadwal latihan ini!');
+                    else throw new Error(error.message);
+                }
+
+                alert('SUKSES! Kehadiran Anda berhasil tercatat melalui sistem Barcode.');
+                window.location.href = 'dashboard_anggota.html';
+
+            } catch (err) {
+                alert('Peringatan: ' + err.message);
+                window.location.reload();
+            }
+        }
+
+        function onScanFailure(error) {
+            // Diabaikan agar konsol bersih
+        }
+
+
+        // Ganti Tampilan Form Berdasarkan Status
+        async function gantiStatus() {
+            const status = document.getElementById('statusKehadiran').value;
+            const sectionHadir = document.getElementById('sectionHadir');
+            const sectionIzin = document.getElementById('sectionIzin');
+            const infoWaktu = document.getElementById('infoWaktu');
+
+            if (status === 'Hadir') {
+                sectionHadir.classList.remove('hidden');
+                sectionIzin.classList.add('hidden');
+                infoWaktu.classList.add('hidden');
+                
+                isProcessingScan = false;
+                inisialisasiScanner();
+            } else {
+                if (html5QrCode) {
+                    try {
+                        await html5QrCode.stop();
+                        html5QrCode.clear();
+                    } catch(e) {}
+                }
+                sectionHadir.classList.add('hidden');
+                sectionIzin.classList.remove('hidden');
+                
+                infoWaktu.classList.remove('hidden');
+                infoWaktu.className = 'mb-5 p-3 rounded-lg text-xs font-medium bg-indigo-50 border border-indigo-200 text-indigo-800';
+                infoWaktu.innerHTML = `ℹ️ Formulir Pengajuan ${status} Manual aktif. Pastikan jadwal belum dimulai.`;
+            }
+        }
+
+        // Validasi Manual untuk Form Izin/Sakit
+        function validasiWaktuIzin() {
+            const selectJadwal = document.getElementById('selectJadwal');
+            const status = document.getElementById('statusKehadiran').value;
+            if (!selectJadwal.value) return;
+
+            const selectedOption = selectJadwal.options[selectJadwal.selectedIndex];
+            const jamMulaiLatihan = selectedOption.getAttribute('data-jam'); 
+            const waktuMulaiObj = new Date(`${selectJadwal.value}T${jamMulaiLatihan}`);
+            const sekarang = new Date();
+
+            window.waktuMulaiObjIzin = waktuMulaiObj;
+            
+            if (sekarang >= waktuMulaiObj) {
+                alert(`Pengajuan ${status} ditolak! Harus diajukan SEBELUM jadwal latihan dimulai.`);
+                document.getElementById('statusKehadiran').value = 'Hadir';
+                gantiStatus();
+            }
+        }
+
+        // Kirim Form Presensi Khusus Izin/Sakit
+        async function kirimPresensiManual() {
+            const tanggal = document.getElementById('selectJadwal').value;
+            const status = document.getElementById('statusKehadiran').value;
+            const sekarang = new Date();
+
+            if (!tanggal) {
+                alert('Silakan pilih jadwal latihan terlebih dahulu!');
+                return;
+            }
+
+            if (window.waktuMulaiObjIzin && sekarang >= window.waktuMulaiObjIzin) {
+                alert(`Pengajuan ${status} gagal! Batas waktu pengajuan adalah sebelum latihan dimulai.`);
+                return;
+            }
+
+            const keterangan = document.getElementById('keteranganIzin').value;
+            const inputSurat = document.getElementById('inputSurat');
+            const btn = document.getElementById('btnKirimIzin');
+
+            btn.textContent = 'Mengirim...';
+            btn.disabled = true;
+
+            try {
+                let fotoSuratBase64 = '';
+                if (inputSurat.files[0]) {
+                    fotoSuratBase64 = await toBase64(inputSurat.files[0]);
+                }
+
+                const { error } = await _supabase
+                    .from('presensi')
+                    .insert([{
+                        nis: nis,
+                        nama_lengkap: nama,
+                        jenis_suara: suara,
+                        tanggal_latihan: tanggal,
+                        status: status,
+                        keterangan: keterangan,
+                        foto_surat_izin: fotoSuratBase64
+                    }]);
+
+                if (error) {
+                    if (error.code === '23505') throw new Error('Anda sudah mengajukan keterangan untuk jadwal tanggal tersebut!');
+                    else throw new Error(error.message);
+                }
+
+                alert('Pengajuan izin/sakit berhasil dikirim!');
+                window.location.href = 'dashboard_anggota.html';
+
+            } catch (err) {
+                alert('Gagal mengirim: ' + err.message);
+                btn.textContent = 'Kirim Pengajuan Izin';
+                btn.disabled = false;
+            }
+        }
+
+        function toBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = error => reject(error);
+            });
+        }
+
+        // Jalankan scanner otomatis langsung saat halaman dibuka
+        setTimeout(() => {
+            inisialisasiScanner();
+        }, 600);
+
+    </script>
+</body>
+</html>
