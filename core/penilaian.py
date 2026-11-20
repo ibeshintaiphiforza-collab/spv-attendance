@@ -287,8 +287,31 @@ def rekap_per_suara(
 
     return pd.DataFrame(data, columns=KOLOM_PER_SUARA)
 
-def label_per_anggota(df: pd.DataFrame) -> pd.DataFrame:
+def jumlah_tercatat(
+    start: str | date | None = None,
+    end: str | date | None = None,
+    jenis: str | Iterable[str] | None = None,
+) -> dict[str, int]:
+    """Total baris presensi per status pada sesi yang lolos filter."""
+    k_sesi, p_sesi, _ = _filter_sesi(start, end, jenis)
+    where = f" WHERE {' AND '.join(k_sesi)}" if k_sesi else ""
+    hasil = {status: 0 for status in STATUS_VALID}
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT p.status, COUNT(*) AS jumlah "
+            "FROM presensi p JOIN sesi s ON s.id = p.sesi_id"
+            f"{where} GROUP BY p.status",
+            p_sesi,
+        ).fetchall()
+    finally:
+        conn.close()
+    for row in rows:
+        if row["status"] in hasil:
+            hasil[row["status"]] = int(row["jumlah"])
+    return hasil
 
+def label_per_anggota(df: pd.DataFrame) -> pd.DataFrame:
     """Salin rekap per anggota dengan judul kolom bahasa Indonesia."""
     return df.rename(columns=LABEL_PER_ANGGOTA)
 

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from datetime import date
+
 import streamlit as st
 
+from core.backup import SQLITE_MIME, backup_bytes, restore_from_bytes
 from core.db import init_db
 from core.settings import (
     AMBANG_KEYS,
@@ -119,3 +122,54 @@ st.info(
     f"Contoh 4 sesi (2 Hadir, 1 Izin, 1 Alpa) → skor **{skor:g}** → "
     f"predikat **{predikat(skor, aktif)}**."
 )
+
+st.divider()
+st.subheader("💾 Cadangan & Pemulihan Data")
+st.warning(
+    "Pemulihan (restore) **menimpa seluruh data** — anggota, sesi, presensi, dan "
+    "pengaturan — dengan isi berkas yang diunggah. Pengaturan saat ini akan "
+    "disalin ke `data.db.bak` sebelum ditimpa."
+)
+
+try:
+    isi_backup = backup_bytes()
+except Exception as exc:
+    isi_backup = None
+    st.error(f"Gagal membuat cadangan: {exc}")
+
+if isi_backup is not None:
+    st.download_button(
+        "⬇️ Unduh Cadangan Database (.db)",
+        data=isi_backup,
+        file_name=f"data_spv_{date.today().isoformat()}.db",
+        mime=SQLITE_MIME,
+        use_container_width=True,
+    )
+
+unggahan = st.file_uploader(
+    "Unggah berkas cadangan (.db) untuk dipulihkan",
+    type=["db"],
+    key="restore_file",
+)
+if unggahan is not None:
+    konfirmasi = st.checkbox(
+        "Saya yakin ingin mengganti seluruh data",
+        key="restore_konfirmasi",
+    )
+    if st.button(
+        "♻️ Pulihkan dari Berkas",
+        type="primary",
+        disabled=not konfirmasi,
+        use_container_width=True,
+    ):
+        try:
+            restore_from_bytes(unggahan.getvalue())
+        except Exception as exc:
+            st.session_state["flash_restore"] = ("error", f"Restore gagal: {exc}")
+        else:
+            st.session_state["flash_restore"] = ("success", "Data berhasil dipulihkan.")
+        st.rerun()
+
+flash_restore = st.session_state.pop("flash_restore", None)
+if flash_restore:
+    getattr(st, flash_restore[0])(flash_restore[1])
